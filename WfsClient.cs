@@ -30,13 +30,13 @@ namespace owslib
             XElement serviceIdentificationXml = capabilitiesXml.XPathSelectElement("/ows:ServiceIdentification", nsManager);
             serviceIdentification = new ServiceIdentificationClass(serviceIdentificationXml, nsManager);
 
-            // TODO: Gather OperationsMetadata
+            // TODO: Gather OperationsMetadata someday.
 
             // Gather FeatureTypeList information
             IEnumerable<XElement> featureTypes = capabilitiesXml.XPathSelectElements("/wfs:FeatureTypeList/wfs:FeatureType", nsManager);
             featureTypeList = new FeatureTypeListClass(featureTypes, nsManager);
 
-            // TODO: Gather FilterCapabilities
+            // TODO: Gather FilterCapabilities someday.
         }
 
         // Classes to house information from the service's GetCapabilities
@@ -44,6 +44,7 @@ namespace owslib
         {
             public ServiceIdentificationClass(XElement serviceIndentificationXml, XmlNamespaceManager nsManager)
             {
+                // Grab all the various bits of info from the XML snippet
                 title = serviceIndentificationXml.XPathSelectElement("ows:Title", nsManager).Value;
                 description = serviceIndentificationXml.XPathSelectElement("ows:Abstract", nsManager).Value;
                 IEnumerable<XElement> keywordEles = serviceIndentificationXml.XPathSelectElements("ows:Keywords/ows:Keyword", nsManager);
@@ -54,6 +55,7 @@ namespace owslib
                 accessConstraints = serviceIndentificationXml.XPathSelectElement("ows:AccessConstraints", nsManager).Value;
             }
 
+            // ServiceIdentificationClass fields
             private string title;
             private string description;
             private List<string> keywords = new List<string>();
@@ -72,14 +74,21 @@ namespace owslib
             public string AccessConstraints { get { return accessConstraints; } }
         }
 
-        public class ServiceProviderClass { }
+        public class ServiceProviderClass 
+        {
+            // TODO: Implement this someday!!!
+        }
 
-        public class OperationsMetadataClass { }
+        public class OperationsMetadataClass 
+        {
+            // TODO: Implement this someday!!!
+        }
 
         public class FeatureTypeClass 
         {
             public FeatureTypeClass(XElement featureTypeXml, XmlNamespaceManager nsManager)
             {
+                // Grab all the various bits of info from the XML snippet
                 name = featureTypeXml.XPathSelectElement("wfs:Name", nsManager).Value;
                 title = featureTypeXml.XPathSelectElement("wfs:Title", nsManager).Value;
                 description = featureTypeXml.XPathSelectElement("wfs:Abstract", nsManager).Value;
@@ -87,13 +96,14 @@ namespace owslib
                 foreach (XElement ele in featureTypeXml.XPathSelectElements("wfs:OutputFormats/wfs:Format", nsManager)) { outputFormats.Add(ele.Value); }
                 boundingBox = new BoundingBoxClass(featureTypeXml.XPathSelectElement("ows:WGS84BoundingBox", nsManager), nsManager);
 
-                // TODO: Read DescribeFeatureType results for this FeatureType
+                // TODO: Read DescribeFeatureType results for this FeatureType. Top priority!
             }
 
             public class BoundingBoxClass
             {
                 public BoundingBoxClass(XElement boundingBoxXml, XmlNamespaceManager nsManager)
                 {
+                    // Grab all the various bits of info from the XML snippet
                     string lowerCorner = boundingBoxXml.XPathSelectElement("ows:LowerCorner", nsManager).Value;
                     string upperCorner = boundingBoxXml.XPathSelectElement("ows:UpperCorner", nsManager).Value;
                     string[] lowerCoords = lowerCorner.Split(new Char[] { ' ' });
@@ -104,17 +114,20 @@ namespace owslib
                     westBound = float.Parse(lowerCoords[0]);
                 }
 
+                // BoundingBoxClass fields
                 private float northBound;
                 private float southBound;
                 private float eastBound;
                 private float westBound;
 
+                // Expose fields as read-only properties
                 public float NorthBound { get { return northBound; } }                
                 public float SouthBound { get { return southBound; } }                
                 public float EastBound { get { return eastBound; } }                
                 public float WestBound { get { return westBound; } }
             }
 
+            // FeatureTypeClass fields
             private string name;
             private string title;
             private string description;
@@ -122,6 +135,7 @@ namespace owslib
             private List<string> outputFormats = new List<string>();            
             private BoundingBoxClass boundingBox;
 
+            // Expose fields as read-only properties
             public string Name { get { return name; } }            
             public string Title { get { return title; } }            
             public string Description { get { return description; } }            
@@ -134,6 +148,7 @@ namespace owslib
         {
             public FeatureTypeListClass(IEnumerable<XElement> featureTypes, XmlNamespaceManager nsManager)
             {                
+                // All we have to do here is loop through the elements and create new FeatureTypeClass instances
                 foreach (XElement ele in featureTypes) { this.Add(new FeatureTypeClass(ele, nsManager)); }
             }
         }
@@ -153,10 +168,10 @@ namespace owslib
         public FeatureTypeListClass FeatureTypeList { get { return featureTypeList; } }
         public FilterCapabilitiesClass FilterCapabilities { get { return filterCapabilities; } }
 
-        // Methods
+        // Methods of the WfsClient
         public void GetFeature() 
         {
-            // TODO: Implement this!
+            // TODO: Implement this soon!
         }
 
     }
