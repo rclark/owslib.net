@@ -144,12 +144,15 @@ namespace owslib
             public BoundingBoxClass BoundingBox { get { return boundingBox; } }
         }
 
-        public class FeatureTypeListClass : List<FeatureTypeClass>
+        public class FeatureTypeListClass : Dictionary<string, FeatureTypeClass>
         {
             public FeatureTypeListClass(IEnumerable<XElement> featureTypes, XmlNamespaceManager nsManager)
             {                
                 // All we have to do here is loop through the elements and create new FeatureTypeClass instances
-                foreach (XElement ele in featureTypes) { this.Add(new FeatureTypeClass(ele, nsManager)); }
+                foreach (XElement ele in featureTypes) {
+                    FeatureTypeClass thisFeature = new FeatureTypeClass(ele, nsManager);
+                    this[thisFeature.Name] = thisFeature;
+                }
             }
         }
 
