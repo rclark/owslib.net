@@ -111,35 +111,36 @@ namespace owslib
 
                 // Got it. Okay now we have to compile it, then we can pull out the appropriate type by its namespace-qualified feature name
                 describeFeatureSchemas.Compile();
-                string unqualifiedFeatureName = this.name.Split(new Char[] { ':' })[1];
-                XmlQualifiedName qualifiedFeatureName = new XmlQualifiedName(unqualifiedFeatureName, describeFeatureSchema.TargetNamespace);
-                XmlSchemaElement featureSchemaObj = (XmlSchemaElement)describeFeatureSchema.Elements[qualifiedFeatureName];
-
-                // How fun! Now we have to figure out what kind of thing it is, and somewhere we can get at the attributes...
-                if (featureSchemaObj.ElementSchemaType is XmlSchemaComplexType) // Could also be XmlSchemaSimpleType
+                if (describeFeatureSchema.IsCompiled) // If it didn't compile right (there were some schema problems), then skip it for now
                 {
-                    XmlSchemaComplexType eleSchemaType = (XmlSchemaComplexType)featureSchemaObj.ElementSchemaType;
-                    if (eleSchemaType.ContentTypeParticle is XmlSchemaSequence) // Could also be XmlSchemaAny, XmlSchemaElement, XmlSchemaAll, XmlSchemaChoice, XmlSchemaGroupRef
+                    string unqualifiedFeatureName = this.name.Split(new Char[] { ':' })[1];
+                    XmlQualifiedName qualifiedFeatureName = new XmlQualifiedName(unqualifiedFeatureName, describeFeatureSchema.TargetNamespace);
+                    XmlSchemaElement featureSchemaObj = (XmlSchemaElement)describeFeatureSchema.Elements[qualifiedFeatureName];
+
+                    // How fun! Now we have to figure out what kind of thing it is, and somewhere we can get at the attributes...
+                    if (featureSchemaObj.ElementSchemaType is XmlSchemaComplexType) // Could also be XmlSchemaSimpleType
                     {
-                        XmlSchemaSequence sequence = (XmlSchemaSequence)eleSchemaType.ContentTypeParticle;
-                        foreach (XmlSchemaObject attrSchema in sequence.Items)
+                        XmlSchemaComplexType eleSchemaType = (XmlSchemaComplexType)featureSchemaObj.ElementSchemaType;
+                        if (eleSchemaType.ContentTypeParticle is XmlSchemaSequence) // Could also be XmlSchemaAny, XmlSchemaElement, XmlSchemaAll, XmlSchemaChoice, XmlSchemaGroupRef
                         {
-                            if (attrSchema is XmlSchemaElement) // Could also be XmlSchemaGroupRef, XmlSchemaChoice, XmlSchemaSequence, XmlSchemaAny
+                            XmlSchemaSequence sequence = (XmlSchemaSequence)eleSchemaType.ContentTypeParticle;
+                            foreach (XmlSchemaObject attrSchema in sequence.Items)
                             {
-                                XmlSchemaElement attrEle = (XmlSchemaElement)attrSchema;
-                                if (attrEle.ElementSchemaType is XmlSchemaSimpleType) // Could also be XmlSchemaComplexType
+                                if (attrSchema is XmlSchemaElement) // Could also be XmlSchemaGroupRef, XmlSchemaChoice, XmlSchemaSequence, XmlSchemaAny
                                 {
-                                    attributeList[attrEle.Name] = new FeatureAttributeDefinitionClass(attrEle);
+                                    XmlSchemaElement attrEle = (XmlSchemaElement)attrSchema;
+                                    if (attrEle.ElementSchemaType is XmlSchemaSimpleType) // Could also be XmlSchemaComplexType
+                                    {
+                                        attributeList[attrEle.Name] = new FeatureAttributeDefinitionClass(attrEle);
+                                    }
+
                                 }
-                                
                             }
+
                         }
-                        
                     }
                 }
-
-                Console.WriteLine("maybe");
-            }
+            }                
 
             // This method is called when there's a problem reading the schema doc from the DescribeFeatureType response
             static void ValidationCallback(object sender, ValidationEventArgs args)
