@@ -15,8 +15,10 @@ namespace owslib
         // Constructor
         public WfsClient(string baseServiceUrl)
         {
+            baseUrl = baseServiceUrl;
+
             // Load the GetCapabilities XML Document
-            string capabilitiesUrl = baseServiceUrl + "?request=GetCapabilities&service=WFS&version=1.1.0";
+            string capabilitiesUrl = baseUrl + "?request=GetCapabilities&service=WFS&version=1.1.0";
             XmlReader capabilitiesXmlReader = XmlReader.Create(capabilitiesUrl);
             XElement capabilitiesXml = XElement.Load(capabilitiesXmlReader);
 
@@ -36,7 +38,7 @@ namespace owslib
 
             // Gather FeatureTypeList information
             IEnumerable<XElement> featureTypes = capabilitiesXml.XPathSelectElements("/wfs:FeatureTypeList/wfs:FeatureType", nsManager);
-            featureTypeList = new FeatureTypeListClass(featureTypes, nsManager, baseServiceUrl);
+            featureTypeList = new FeatureTypeListClass(featureTypes, nsManager, this);
 
             // TODO: Gather FilterCapabilities someday.
         }
@@ -88,59 +90,18 @@ namespace owslib
 
         public class FeatureTypeClass 
         {
-            public FeatureTypeClass(XElement featureTypeXml, XmlNamespaceManager nsManager, string baseServiceUrl)
-            {               
+            public FeatureTypeClass(XElement featureTypeXml, XmlNamespaceManager nsManager, WfsClient parent)
+            {
+                this.parent = parent;
+
                 // Grab all the various bits of info from the XML snippet
                 name = featureTypeXml.XPathSelectElement("wfs:Name", nsManager).Value;
                 title = featureTypeXml.XPathSelectElement("wfs:Title", nsManager).Value;
                 try { description = featureTypeXml.XPathSelectElement("wfs:Abstract", nsManager).Value; } catch (NullReferenceException) { description = ""; } // This is an optional element                
                 defaultSrs = featureTypeXml.XPathSelectElement("wfs:DefaultSRS", nsManager).Value;
                 foreach (XElement ele in featureTypeXml.XPathSelectElements("wfs:OutputFormats/wfs:Format", nsManager)) { outputFormats.Add(ele.Value); }
-                boundingBox = new BoundingBoxClass(featureTypeXml.XPathSelectElement("ows:WGS84BoundingBox", nsManager), nsManager);
-
-                // Parse DescribeFeatureType response for this FeatureType -- this sucks.
-                // Get the schema. This is very similar to the mechanism for getting the GetCapabilities doc in the WfsClient constructor
-                string describeFeatureTypeUrl = baseServiceUrl + "?request=DescribeFeatureType&service=WFS&version=1.1.0&typename=" + this.name;
-                XmlReader describeFeatureTypeXmlReader = XmlReader.Create(describeFeatureTypeUrl);
-                XmlSchema describeFeatureSchema = XmlSchema.Read(describeFeatureTypeXmlReader, ValidationCallback);
-
-                // ... except that you have to use this wierd XmlSchemaSet thing to do the compiling
-                XmlSchemaSet describeFeatureSchemas = new XmlSchemaSet();
-                describeFeatureSchemas.ValidationEventHandler += new ValidationEventHandler(ValidationCallback);
-                describeFeatureSchemas.Add(describeFeatureSchema);
-
-                // Got it. Okay now we have to compile it, then we can pull out the appropriate type by its namespace-qualified feature name
-                describeFeatureSchemas.Compile();
-                if (describeFeatureSchema.IsCompiled) // If it didn't compile right (there were some schema problems), then skip it for now
-                {
-                    string unqualifiedFeatureName = this.name.Split(new Char[] { ':' })[1];
-                    XmlQualifiedName qualifiedFeatureName = new XmlQualifiedName(unqualifiedFeatureName, describeFeatureSchema.TargetNamespace);
-                    XmlSchemaElement featureSchemaObj = (XmlSchemaElement)describeFeatureSchema.Elements[qualifiedFeatureName];
-
-                    // How fun! Now we have to figure out what kind of thing it is, and somewhere we can get at the attributes...
-                    if (featureSchemaObj.ElementSchemaType is XmlSchemaComplexType) // Could also be XmlSchemaSimpleType
-                    {
-                        XmlSchemaComplexType eleSchemaType = (XmlSchemaComplexType)featureSchemaObj.ElementSchemaType;
-                        if (eleSchemaType.ContentTypeParticle is XmlSchemaSequence) // Could also be XmlSchemaAny, XmlSchemaElement, XmlSchemaAll, XmlSchemaChoice, XmlSchemaGroupRef
-                        {
-                            XmlSchemaSequence sequence = (XmlSchemaSequence)eleSchemaType.ContentTypeParticle;
-                            foreach (XmlSchemaObject attrSchema in sequence.Items)
-                            {
-                                if (attrSchema is XmlSchemaElement) // Could also be XmlSchemaGroupRef, XmlSchemaChoice, XmlSchemaSequence, XmlSchemaAny
-                                {
-                                    XmlSchemaElement attrEle = (XmlSchemaElement)attrSchema;
-                                    if (attrEle.ElementSchemaType is XmlSchemaSimpleType) // Could also be XmlSchemaComplexType
-                                    {
-                                        attributeList[attrEle.Name] = new FeatureAttributeDefinitionClass(attrEle);
-                                    }
-
-                                }
-                            }
-
-                        }
-                    }
-                }
-            }                
+                boundingBox = new BoundingBoxClass(featureTypeXml.XPathSelectElement("ows:WGS84BoundingBox", nsManager), nsManager);                
+            }
 
             // This method is called when there's a problem reading the schema doc from the DescribeFeatureType response
             static void ValidationCallback(object sender, ValidationEventArgs args)
@@ -199,6 +160,7 @@ namespace owslib
             }
 
             // FeatureTypeClass fields
+            private WfsClient parent;
             private string name;
             private string title;
             private string description;
@@ -215,23 +177,76 @@ namespace owslib
             public List<string> OutputFormats { get { return outputFormats; } }
             public BoundingBoxClass BoundingBox { get { return boundingBox; } }
             public Dictionary<string, FeatureAttributeDefinitionClass> AttributeList { get { return attributeList; } }
-        }
 
-        public class FeatureTypeListClass : Dictionary<string, FeatureTypeClass>
-        {
-            public FeatureTypeListClass(IEnumerable<XElement> featureTypes, XmlNamespaceManager nsManager, string baseServiceUrl)
-            {                
-                // All we have to do here is loop through the elements and create new FeatureTypeClass instances
-                foreach (XElement ele in featureTypes) {
-                    FeatureTypeClass thisFeature = new FeatureTypeClass(ele, nsManager, baseServiceUrl);
-                    this[thisFeature.Name] = thisFeature;
+            // Populate the attributeList by running a DescribeFeatureType request
+            public void DescribeFeatureType()
+            {
+                // Parse DescribeFeatureType response for this FeatureType -- this sucks.
+                // Get the schema. This is very similar to the mechanism for getting the GetCapabilities doc in the WfsClient constructor
+                string describeFeatureTypeUrl = this.parent.BaseUrl + "?request=DescribeFeatureType&service=WFS&version=1.1.0&typename=" + this.name;
+                XmlReader describeFeatureTypeXmlReader = XmlReader.Create(describeFeatureTypeUrl);
+                XmlSchema describeFeatureSchema = XmlSchema.Read(describeFeatureTypeXmlReader, ValidationCallback);
+
+                // ... except that you have to use this wierd XmlSchemaSet thing to do the compiling
+                XmlSchemaSet describeFeatureSchemas = new XmlSchemaSet();
+                describeFeatureSchemas.ValidationEventHandler += new ValidationEventHandler(ValidationCallback);
+                describeFeatureSchemas.Add(describeFeatureSchema);
+
+                // Got it. Okay now we have to compile it, then we can pull out the appropriate type by its namespace-qualified feature name
+                describeFeatureSchemas.Compile();
+                if (describeFeatureSchema.IsCompiled) // If it didn't compile right (there were some schema problems), then skip it for now
+                {
+                    string unqualifiedFeatureName = this.name.Split(new Char[] { ':' })[1];
+                    XmlQualifiedName qualifiedFeatureName = new XmlQualifiedName(unqualifiedFeatureName, describeFeatureSchema.TargetNamespace);
+                    XmlSchemaElement featureSchemaObj = (XmlSchemaElement)describeFeatureSchema.Elements[qualifiedFeatureName];
+
+                    // How fun! Now we have to figure out what kind of thing it is, and somewhere we can get at the attributes...
+                    if (featureSchemaObj.ElementSchemaType is XmlSchemaComplexType) // Could also be XmlSchemaSimpleType
+                    {
+                        XmlSchemaComplexType eleSchemaType = (XmlSchemaComplexType)featureSchemaObj.ElementSchemaType;
+                        if (eleSchemaType.ContentTypeParticle is XmlSchemaSequence) // Could also be XmlSchemaAny, XmlSchemaElement, XmlSchemaAll, XmlSchemaChoice, XmlSchemaGroupRef
+                        {
+                            XmlSchemaSequence sequence = (XmlSchemaSequence)eleSchemaType.ContentTypeParticle;
+                            foreach (XmlSchemaObject attrSchema in sequence.Items)
+                            {
+                                if (attrSchema is XmlSchemaElement) // Could also be XmlSchemaGroupRef, XmlSchemaChoice, XmlSchemaSequence, XmlSchemaAny
+                                {
+                                    XmlSchemaElement attrEle = (XmlSchemaElement)attrSchema;
+                                    if (attrEle.ElementSchemaType is XmlSchemaSimpleType) // Could also be XmlSchemaComplexType
+                                    {
+                                        attributeList[attrEle.Name] = new FeatureAttributeDefinitionClass(attrEle);
+                                    }
+
+                                }
+                            }
+
+                        }
+                    }
                 }
             }
         }
 
+        public class FeatureTypeListClass : Dictionary<string, FeatureTypeClass>
+        {
+            public FeatureTypeListClass(IEnumerable<XElement> featureTypes, XmlNamespaceManager nsManager, WfsClient parent)
+            {
+                this.parent = parent;
+
+                // All we have to do here is loop through the elements and create new FeatureTypeClass instances
+                foreach (XElement ele in featureTypes) {
+                    FeatureTypeClass thisFeature = new FeatureTypeClass(ele, nsManager, parent);
+                    this[thisFeature.Name] = thisFeature;
+                }
+            }
+
+            // Fields of the FeatureTypeListClass
+            private WfsClient parent;
+        }
+
         public class FilterCapabilitiesClass { }
 
-        // Fields of the WfsClient
+        // Fields of the WfsClient        
+        private string baseUrl;
         private XmlNamespaceManager nsManager;
         private ServiceIdentificationClass serviceIdentification;
         private OperationsMetadataClass operationsMetadata;
@@ -239,6 +254,7 @@ namespace owslib
         private FilterCapabilitiesClass filterCapabilities;
 
         // Read-only properties of the WfsClient
+        public string BaseUrl { get { return baseUrl; } }
         public ServiceIdentificationClass ServiceIdentification { get { return serviceIdentification; } }
         public OperationsMetadataClass OperationsMetadata { get { return operationsMetadata; } }
         public FeatureTypeListClass FeatureTypeList { get { return featureTypeList; } }
