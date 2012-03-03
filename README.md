@@ -1,4 +1,4 @@
-﻿## Owslib.Net
+# Owslib.Net
 
 ## Motivation
 - Primarily we're interested in a generic WFS client class that can work for us in a number of Windows-based applications
